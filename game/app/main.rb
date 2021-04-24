@@ -1,5 +1,9 @@
+def vector_length(vector)
+  Math.sqrt(vector.x**2 + vector.y**2)
+end
+
 def clamp_vector(vector, max_length)
-  length = Math.sqrt(vector.x**2 + vector.y**2)
+  length = vector_length(vector)
   return if length <= max_length
 
   factor = max_length / length
@@ -12,8 +16,9 @@ module Input
     def process(args)
       keyboard = args.inputs.keyboard
       {
-        swim_up: keyboard.key_down.space,
-        horizontal: keyboard.left_right
+        swim_up: keyboard.key_down.up,
+        horizontal: keyboard.left_right,
+        harpoon: keyboard.key_down.space
       }
     end
   end
@@ -26,7 +31,20 @@ module Game
         :player,
         position: [180, 140],
         v: [0, 0],
-        x_forward: 1
+        x_forward: 1,
+        max_v: 1,
+        gravity: -0.01
+      )
+      args.state.harpoon = args.state.new_entity_strict(
+        :harpoon,
+        attached: true,
+        position: [0, 0],
+        v: [0, 0],
+        x_forward: 1,
+        max_v: 3,
+        gravity: 0,
+        pulling: false,
+        rope_length: 50
       )
     end
 
@@ -37,8 +55,12 @@ module Game
 
     def tick(args, input_events)
       do_swim(args, input_events)
+      handle_shoot_harpoon(args, input_events)
+      handle_pull_in_harpoon(args, input_events)
+      apply_water_resistance(args)
       apply_gravity(args)
       apply_velocity(args)
+      apply_harpoon_rope(args)
       keep_player_inside_screen(args)
     end
 
@@ -50,9 +72,25 @@ module Game
       player(args).position
     end
 
-    private
+    def harpoon(args)
+      args.state.harpoon
+    end
 
-    MAX_V = 1
+    def harpoon_position(args)
+      harpoon = harpoon(args)
+      harpoon.attached ? harpoon_attached_position(args) : harpoon.position
+    end
+
+    def harpoon_attached_position(args)
+      harpoon = harpoon(args)
+      player = player(args)
+      [
+        player.x_forward.negative? ? player.position.x - 15 : player.position.x + 10,
+        player.position.y + 2
+      ]
+    end
+
+    private
 
     def do_swim(args, input_events)
       horizontal_movement = input_events[:horizontal]
@@ -60,18 +98,77 @@ module Game
       player.v.y += 0.5 if input_events[:swim_up]
       player.v.x = horizontal_movement * 0.5
       player.x_forward = horizontal_movement.sign unless horizontal_movement.zero?
+
+      harpoon = Game.harpoon(args)
+      harpoon.x_forward = player.x_forward if harpoon.attached
+    end
+
+    def handle_shoot_harpoon(args, input_events)
+      harpoon = harpoon(args)
+      return unless harpoon.attached && input_events[:harpoon]
+
+      player = Game.player(args)
+      harpoon.position = harpoon_attached_position(args)
+      harpoon.v.x = player.v.x + harpoon.x_forward * 3
+      harpoon.v.y = player.v.y
+      harpoon.gravity = -0.005
+      harpoon.attached = false
+
+      input_events[:harpoon] = false
+    end
+
+    def handle_pull_in_harpoon(args, input_events)
+      harpoon = harpoon(args)
+      return unless !harpoon.attached && !harpoon.pulling && input_events[:harpoon]
+
+      harpoon.pulling = true
+      harpoon.gravity = 0
+    end
+
+    def apply_water_resistance(args)
+      harpoon = harpoon(args)
+      return if harpoon.attached || harpoon.v.x.zero?
+
+      harpoon.v.x *= 0.95
+      harpoon.v.x = 0 if harpoon.v.x.abs < 0.01
+    end
+
+    def apply_harpoon_rope(args)
+      harpoon = harpoon(args)
+      return if harpoon.attached
+
+      attached_position = harpoon_attached_position(args)
+      harpoon_to_player = [attached_position.x - harpoon.position.x, attached_position.y - harpoon.position.y]
+      distance = vector_length(harpoon_to_player)
+
+      if harpoon.pulling
+        harpoon.v.x = 2 * harpoon_to_player.x / distance
+        harpoon.v.y = 2 * harpoon_to_player.y / distance
+        return unless distance < 3
+
+        harpoon.attached = true
+        harpoon.pulling = false
+      else
+        return if distance < harpoon.rope_length
+
+        factor = (distance - harpoon.rope_length) / distance
+        harpoon.position.x += harpoon_to_player.x * factor
+        harpoon.position.y += harpoon_to_player.y * factor
+      end
     end
 
     def apply_gravity(args)
-      player = player(args)
-      player.v.y -= 0.01
+      [player(args), harpoon(args)].each do |gravity_object|
+        gravity_object.v.y += gravity_object.gravity
+      end
     end
 
     def apply_velocity(args)
-      player = player(args)
-      clamp_vector(player.v, MAX_V)
-      player.position.x += player.v.x
-      player.position.y += player.v.y
+      [player(args), harpoon(args)].each do |moving_object|
+        clamp_vector(moving_object.v, moving_object.max_v)
+        moving_object.position.x += moving_object.v.x
+        moving_object.position.y += moving_object.v.y
+      end
     end
 
     def keep_player_inside_screen(args)
@@ -105,6 +202,8 @@ module Render
       bg_color = args.state.palette[2]
       render_target.background_color = [bg_color.r, bg_color.g, bg_color.b]
       render_player(args, render_target)
+      render_harpoon(args, render_target)
+      render_harpoon_rope(args, render_target)
     end
 
     private
@@ -121,16 +220,54 @@ module Render
       render_target.primitives << base.merge(source_y: 12).merge(args.state.palette[0])
       render_target.primitives << base.merge(source_y: 0).merge(args.state.palette[4])
     end
+
+    def render_harpoon(args, render_target)
+      player_position = Game.player_position(args)
+      harpoon = Game.harpoon(args)
+      harpoon_position = Game.harpoon_position(args)
+      flip_horizontally = harpoon.x_forward.negative?
+      x = flip_horizontally ? harpoon_position.x - 2 : harpoon_position.x - 5
+      y = harpoon_position.y - 2
+      render_target.primitives << {
+        x: x,
+        y: y,
+        flip_horizontally: flip_horizontally,
+        w: 8,
+        h: 5,
+        path: 'resources/harpoon.png'
+      }.merge(args.state.palette[4]).sprite
+      return unless Debug.debug_mode
+
+      render_target.primitives << { x: harpoon_position.x, y: harpoon_position.y, w: 1, h: 1, r: 255, g: 0, b: 0 }.solid
+    end
+
+    def render_harpoon_rope(args, render_target)
+      harpoon = Game.harpoon(args)
+      return if harpoon.attached
+
+      player = Game.player(args)
+
+      render_target.primitives << {
+        x: harpoon.x_forward.positive? ? harpoon.position.x - 5 : harpoon.position.x + 5,
+        y: harpoon.position.y + 1,
+        x2: player.x_forward.positive? ? player.position.x + 8 : player.position.x - 9,
+        y2: player.position.y + 4
+      }.merge(args.state.palette[4]).line
+
+    end
   end
 end
 
 module Debug
   class << self
+    attr_accessor :debug_mode
+
     def tick(args)
       return unless active?
 
       args.outputs.debug << [0, 720, $gtk.current_framerate.to_i.to_s, 255, 255, 255].label
       $gtk.reset if args.inputs.keyboard.key_down.r
+      self.debug_mode = !self.debug_mode if args.inputs.keyboard.key_down.d
     end
 
     private
