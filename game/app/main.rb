@@ -13,12 +13,12 @@ end
 module Game
   class << self
     def setup(args)
-      args.state.player = { position: [180, 140], v: [0, 0] }
+      args.state.player = { position: [180, 140], v: [0, 0], x_forward: 1 }
     end
 
     def player_rect(args)
       position = player(args)[:position]
-      { x: position.x - 8, y: position.y, w: 16, h: 32 }
+      { x: position.x - 11, y: position.y, w: 21, h: 12 }
     end
 
     def tick(args, input_events)
@@ -31,14 +31,20 @@ module Game
       args.state.player
     end
 
+    def player_position(args)
+      args.state.player[:position]
+    end
+
     private
 
     MAX_V = 1
 
     def do_swim(args, input_events)
+      horizontal_movement = input_events[:horizontal]
       player = player(args)
       player[:v].y += 0.5 if input_events[:swim_up]
-      player[:v].x = (input_events[:horizontal] || 0) * 0.5
+      player[:v].x = horizontal_movement * 0.5
+      player[:x_forward] = horizontal_movement.sign unless horizontal_movement.zero?
     end
 
     def apply_gravity(args)
@@ -67,6 +73,13 @@ end
 module Render
   class << self
     def setup(args)
+      args.state.palette = [
+        { r: 55, g: 33, b: 52 },
+        { r: 71, g: 68, b: 118 },
+        { r: 72, g: 136, b: 183 },
+        { r: 109, g: 188, b: 185 },
+        { r: 140, g: 239, b: 182 }
+      ]
       args.outputs.static_primitives << {
         x: 0, y: 0, w: 1280, h: 720,
         source_x: 0, source_y: 0, source_w: 320, source_h: 180,
@@ -76,14 +89,24 @@ module Render
 
     def tick(args)
       render_target = args.outputs[:canvas]
-      render_target.background_color = [0, 0, 0]
+      bg_color = args.state.palette[2]
+      render_target.background_color = [bg_color.r, bg_color.g, bg_color.b]
       render_player(args, render_target)
     end
 
     private
 
     def render_player(args, render_target)
-      render_target.primitives << Game.player_rect(args).merge(r: 255, g: 0, b: 0).solid
+      player = Game.player(args)
+      base = Game.player_rect(args).merge(
+        path: 'resources/player.png',
+        source_x: args.tick_count.idiv(10) % 2 == 0 ? 0 : 21,
+        source_w: 21,
+        source_h: 12,
+        flip_horizontally: player[:x_forward] < 0
+      ).sprite
+      render_target.primitives << base.merge(source_y: 12).merge(args.state.palette[0])
+      render_target.primitives << base.merge(source_y: 0).merge(args.state.palette[4])
     end
   end
 end
