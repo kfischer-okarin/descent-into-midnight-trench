@@ -1,3 +1,12 @@
+def clamp_vector(vector, max_length)
+  length = Math.sqrt(vector.x**2 + vector.y**2)
+  return if length <= max_length
+
+  factor = max_length / length
+  vector.x *= factor
+  vector.y *= factor
+end
+
 module Input
   class << self
     def process(args)
@@ -25,6 +34,7 @@ module Game
       do_swim(args, input_events)
       apply_gravity(args)
       apply_velocity(args)
+      keep_player_inside_screen(args)
     end
 
     def player(args)
@@ -52,20 +62,18 @@ module Game
       player[:v].y -= 0.01
     end
 
-    def clamp(vector, max_length)
-      length = Math.sqrt(vector.x**2 + vector.y**2)
-      return if length <= max_length
-
-      factor = max_length / length
-      vector.x *= factor
-      vector.y *= factor
-    end
-
     def apply_velocity(args)
       player = player(args)
-      clamp(player[:v], MAX_V)
+      clamp_vector(player[:v], MAX_V)
       player[:position].x += player[:v].x
       player[:position].y += player[:v].y
+    end
+
+    def keep_player_inside_screen(args)
+      player_position = player_position(args)
+      player_rect = player_rect(args)
+      player_position.x += -player_rect.left if player_rect.left.negative?
+      player_position.x -= (player_rect.right - 320) if player_rect.right > 320
     end
   end
 end
