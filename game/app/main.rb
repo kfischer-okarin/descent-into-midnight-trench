@@ -1,5 +1,6 @@
 SCREEN_W = 320
 SCREEN_H = 180
+ONE_METER = 15
 
 def vector_length(vector)
   Math.sqrt(vector.x**2 + vector.y**2)
@@ -50,11 +51,16 @@ module Game
         rope_length: 50
       )
       args.state.depth = 0
-      args.state.enemies = [args.state.new_entity_strict(
+      args.state.explored_depth = 0
+      args.state.enemies = []
+    end
+
+    def build_enemy(args, y)
+      args.state.new_entity_strict(
         :bite_fish,
-        rect: [20, -100, 20, 15],
+        rect: [30 + (rand * (SCREEN_W - 30)).ceil , y, 20, 15],
         x_forward: 1
-      )]
+      )
     end
 
     def player_rect(args)
@@ -204,12 +210,31 @@ module Game
 
     def vertical_scroll(args)
       args.state.depth = [0, (player_position(args).y.abs - SCREEN_H.half).to_i].max
+      if args.state.depth > args.state.explored_depth + 20
+        args.state.explored_depth = args.state.depth
+
+        remove_old_enemies(args)
+        add_new_enemies(args)
+      end
+    end
+
+    def remove_old_enemies(args)
+      args.state.enemies.reject! { |enemy| enemy.rect.y > -args.state.explored_depth + SCREEN_H * 3 }
+    end
+
+    def add_new_enemies(args)
+      min_enemy_distance = 100 - args.state.depth.div(ONE_METER * 20) * 5
+      next_enemy_y = -args.state.depth - SCREEN_H - 40
+      closest_enemy = args.state.enemies.last
+      return if closest_enemy && (closest_enemy.rect.y - next_enemy_y) < min_enemy_distance
+
+      args.state.enemies << build_enemy(args, next_enemy_y + (rand * 20).ceil)
     end
 
     def move_enemies(args)
       args.state.enemies.each do |enemy|
         enemy.rect.x += enemy.x_forward
-        if enemy.x_forward.positive? && enemy.rect.right > SCREEN_W || enemy.x_forward.negative? && enemy.rect.left < 0
+        if enemy.x_forward.positive? && enemy.rect.right > SCREEN_W - 20 || enemy.x_forward.negative? && enemy.rect.left < 20
           enemy.x_forward *= -1
         end
       end
@@ -375,7 +400,7 @@ module Render
     end
 
     def render_ui(args, render_target)
-      meters = Game.player_position(args).y.abs.idiv(150) * 10
+      meters = Game.player_position(args).y.abs.idiv(ONE_METER * 10) * 10
       render_target.primitives << {
         x: SCREEN_W,
         y: SCREEN_H,
