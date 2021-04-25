@@ -50,6 +50,11 @@ module Game
         rope_length: 50
       )
       args.state.depth = 0
+      args.state.enemies = [args.state.new_entity_strict(
+        :bite_fish,
+        rect: [20, -100, 20, 15],
+        x_forward: 1
+      )]
     end
 
     def player_rect(args)
@@ -61,10 +66,14 @@ module Game
       do_swim(args, input_events)
       handle_shoot_harpoon(args, input_events)
       handle_pull_in_harpoon(args, input_events)
+
       apply_water_resistance(args)
       apply_gravity(args)
       apply_velocity(args)
       apply_harpoon_rope(args)
+
+      move_enemies(args)
+
       keep_player_inside_screen(args)
       vertical_scroll(args)
     end
@@ -93,6 +102,15 @@ module Game
         player.x_forward.negative? ? player.position.x - 15 : player.position.x + 10,
         player.position.y + 2
       ]
+    end
+
+    def visible_enemies(args)
+      screen_top = -args.state.depth
+      screen_bottom = screen_top - SCREEN_H
+
+      args.state.enemies.select do |enemy|
+        enemy.rect.bottom <= screen_top && enemy.rect.top >= screen_bottom
+      end
     end
 
     private
@@ -187,6 +205,15 @@ module Game
     def vertical_scroll(args)
       args.state.depth = [0, (player_position(args).y.abs - SCREEN_H.half).to_i].max
     end
+
+    def move_enemies(args)
+      args.state.enemies.each do |enemy|
+        enemy.rect.x += enemy.x_forward
+        if enemy.x_forward.positive? && enemy.rect.right > SCREEN_W || enemy.x_forward.negative? && enemy.rect.left < 0
+          enemy.x_forward *= -1
+        end
+      end
+    end
   end
 end
 
@@ -211,6 +238,7 @@ module Render
       render_target = args.outputs[:canvas]
       bg_color = args.state.palette[2]
       render_target.background_color = [bg_color.r, bg_color.g, bg_color.b]
+      render_enemies(args, render_target)
       render_player(args, render_target)
       render_harpoon(args, render_target)
       render_harpoon_rope(args, render_target)
@@ -277,6 +305,23 @@ module Render
         x2: player.x_forward.positive? ? player.position.x + 8 : player.position.x - 9,
         y2: player.position.y + 4
       }.merge(args.state.palette[4]).line
+    end
+
+    def render_enemies(args, render_target)
+      Game.visible_enemies(args).each do |enemy|
+        render_target.primitives << {
+          x: enemy.rect.x,
+          y: enemy.rect.y,
+          w: enemy.rect.w,
+          h: enemy.rect.h,
+          path: "resources/#{enemy.entity_type}.png",
+          source_x: args.tick_count.idiv(10) % 2 == 0 ? 0 : enemy.rect.w,
+          source_y: 0,
+          source_w: enemy.rect.w,
+          source_h: enemy.rect.h,
+          flip_horizontally: enemy.x_forward.negative?
+        }.merge(args.state.palette[3]).sprite
+      end
     end
 
     def render_ui(args, render_target)
