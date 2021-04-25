@@ -1,3 +1,6 @@
+SCREEN_W = 320
+SCREEN_H = 180
+
 def vector_length(vector)
   Math.sqrt(vector.x**2 + vector.y**2)
 end
@@ -29,7 +32,7 @@ module Game
     def setup(args)
       args.state.player = args.state.new_entity_strict(
         :player,
-        position: [180, 140],
+        position: [160, -30],
         v: [0, 0],
         x_forward: 1,
         max_v: 1,
@@ -46,6 +49,7 @@ module Game
         pulling: false,
         rope_length: 50
       )
+      args.state.depth = 0
     end
 
     def player_rect(args)
@@ -62,6 +66,7 @@ module Game
       apply_velocity(args)
       apply_harpoon_rope(args)
       keep_player_inside_screen(args)
+      vertical_scroll(args)
     end
 
     def player(args)
@@ -175,7 +180,12 @@ module Game
       player_position = player_position(args)
       player_rect = player_rect(args)
       player_position.x += -player_rect.left if player_rect.left.negative?
-      player_position.x -= (player_rect.right - 320) if player_rect.right > 320
+      player_position.x -= (player_rect.right - SCREEN_W) if player_rect.right > SCREEN_W
+      player_position.y -= player_rect.top if player_rect.top.positive?
+    end
+
+    def vertical_scroll(args)
+      args.state.depth = [0, (player_position(args).y.abs - SCREEN_H.half).to_i].max
     end
   end
 end
@@ -192,7 +202,7 @@ module Render
       ]
       args.outputs.static_primitives << {
         x: 0, y: 0, w: 1280, h: 720,
-        source_x: 0, source_y: 0, source_w: 320, source_h: 180,
+        source_x: 0, source_y: 0, source_w: SCREEN_W, source_h: SCREEN_H,
         path: :canvas
       }.sprite
     end
@@ -204,9 +214,23 @@ module Render
       render_player(args, render_target)
       render_harpoon(args, render_target)
       render_harpoon_rope(args, render_target)
+      transform_for_depth(args, render_target)
+      render_ui(args, render_target)
     end
 
     private
+
+    def y_on_screen(args, y)
+      top = -args.state.depth
+      SCREEN_H - (top - y)
+    end
+
+    def transform_for_depth(args, render_target)
+      render_target.primitives.each do |primitive|
+        primitive.y = y_on_screen(args, primitive.y)
+        primitive.y2 = y_on_screen(args, primitive.y2) if primitive.primitive_marker == :line
+      end
+    end
 
     def render_player(args, render_target)
       player = Game.player(args)
@@ -253,7 +277,17 @@ module Render
         x2: player.x_forward.positive? ? player.position.x + 8 : player.position.x - 9,
         y2: player.position.y + 4
       }.merge(args.state.palette[4]).line
+    end
 
+    def render_ui(args, render_target)
+      meters = args.state.depth.idiv(150) * 10
+      render_target.primitives << {
+        x: SCREEN_W,
+        y: SCREEN_H,
+        text: "#{meters}m",
+        alignment_enum: 2,
+        size_enum: -2
+      }.merge(args.state.palette[4]).label
     end
   end
 end
