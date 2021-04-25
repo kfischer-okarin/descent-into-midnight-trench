@@ -220,6 +220,7 @@ end
 module Render
   class << self
     def setup(args)
+      args.state.rock_seed = Time.now.to_i
       args.state.palette = [
         { r: 55, g: 33, b: 52 },
         { r: 71, g: 68, b: 118 },
@@ -242,6 +243,9 @@ module Render
       render_player(args, render_target)
       render_harpoon(args, render_target)
       render_harpoon_rope(args, render_target)
+
+      render_rocks(args, render_target)
+
       transform_for_depth(args, render_target)
       render_ui(args, render_target)
     end
@@ -324,8 +328,54 @@ module Render
       end
     end
 
+    def render_rocks(args, render_target)
+      start_y_above = -(args.state.depth.idiv(SCREEN_H) - 1) * SCREEN_H
+      render_rocks_segment(args, render_target, start_y_above)
+      render_rocks_segment(args, render_target, start_y_above - SCREEN_H)
+      render_rocks_segment(args, render_target, start_y_above - SCREEN_H * 2)
+      render_rocks_segment(args, render_target, start_y_above - SCREEN_H * 3)
+    end
+
+    def render_rocks_segment(args, render_target, start_y)
+      rng = Random.new(args.state.rock_seed + start_y)
+      base = {
+        w: 48,
+        h: 48,
+        path: 'resources/rock.png',
+        source_y: 0,
+        source_w: 48,
+        source_h: 48,
+      }.merge(args.state.palette[0]).sprite
+
+      y = start_y
+      loop do
+        y -= (10 + (rng.rand * 20).ceil)
+        render_target.primitives << base.merge(
+          x: (rng.rand * 20).ceil - 30,
+          y: y,
+          source_x: (rng.rand * 4).floor * 48,
+          flip_horizontally: rng.rand < 0.5,
+          flip_vertically: rng.rand < 0.5,
+        )
+        break if y < start_y - SCREEN_H
+      end
+
+      y = start_y
+      loop do
+        y -= (10 + (rng.rand * 20).ceil)
+        render_target.primitives << base.merge(
+          x: SCREEN_W - 20 - (rng.rand * 20).ceil,
+          y: y,
+          source_x: (rng.rand * 4).floor * 48,
+          flip_horizontally: rng.rand < 0.5,
+          flip_vertically: rng.rand < 0.5
+        )
+        break if y < start_y - SCREEN_H
+      end
+    end
+
     def render_ui(args, render_target)
-      meters = args.state.depth.idiv(150) * 10
+      meters = Game.player_position(args).y.abs.idiv(150) * 10
       render_target.primitives << {
         x: SCREEN_W,
         y: SCREEN_H,
