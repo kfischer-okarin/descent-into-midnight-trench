@@ -58,8 +58,11 @@ module Game
     def build_enemy(args, y)
       args.state.new_entity_strict(
         :bite_fish,
-        rect: [30 + (rand * (SCREEN_W - 30)).ceil , y, 20, 15],
-        x_forward: 1
+        rect: [30 + (rand * (SCREEN_W - 30)).ceil , y, 20, 11],
+        w: 20,
+        h: 15,
+        x_forward: 1,
+        death_tick_count: nil
       )
     end
 
@@ -77,6 +80,7 @@ module Game
       apply_gravity(args)
       apply_velocity(args)
       apply_harpoon_rope(args)
+      kill_enemies(args)
 
       move_enemies(args)
 
@@ -233,10 +237,30 @@ module Game
 
     def move_enemies(args)
       args.state.enemies.each do |enemy|
-        enemy.rect.x += enemy.x_forward
-        if enemy.x_forward.positive? && enemy.rect.right > SCREEN_W - 20 || enemy.x_forward.negative? && enemy.rect.left < 20
-          enemy.x_forward *= -1
+        if enemy.death_tick_count
+          # float up dead
+          enemy.rect.y += (args.tick_count - enemy.death_tick_count) * 0.02
+        else
+          enemy.rect.x += enemy.x_forward
+          if enemy.x_forward.positive? && enemy.rect.right > SCREEN_W - 20 || enemy.x_forward.negative? && enemy.rect.left < 20
+            enemy.x_forward *= -1
+          end
         end
+      end
+    end
+
+    def kill_enemies(args)
+      args.state.enemies.reject! { |enemy|
+        enemy.death_tick_count && args.tick_count - enemy.death_tick_count > 20
+      }
+
+      harpoon = harpoon(args)
+      return if harpoon.attached || harpoon.v.x.abs < 1
+
+      args.state.enemies.each do |enemy|
+        next unless harpoon.position.inside_rect? enemy.rect
+
+        enemy.death_tick_count = args.tick_count
       end
     end
   end
@@ -338,17 +362,21 @@ module Render
 
     def render_enemies(args, render_target)
       Game.visible_enemies(args).each do |enemy|
+        is_dead = !enemy.death_tick_count.nil?
+
         render_target.primitives << {
           x: enemy.rect.x,
           y: enemy.rect.y,
-          w: enemy.rect.w,
-          h: enemy.rect.h,
+          w: enemy.w,
+          h: enemy.h,
           path: "resources/#{enemy.entity_type}.png",
-          source_x: args.tick_count.idiv(10) % 2 == 0 ? 0 : enemy.rect.w,
+          source_x: (is_dead || args.tick_count.idiv(10) % 2 == 0) ? 0 : enemy.rect.w,
           source_y: 0,
-          source_w: enemy.rect.w,
-          source_h: enemy.rect.h,
-          flip_horizontally: enemy.x_forward.negative?
+          source_w: enemy.w,
+          source_h: enemy.h,
+          flip_horizontally: enemy.x_forward.negative?,
+          flip_vertically: is_dead,
+          a: 255 - (is_dead ? (args.tick_count - enemy.death_tick_count) * 13 : 0)
         }.merge(args.state.palette[3]).sprite
       end
     end
