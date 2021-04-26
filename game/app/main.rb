@@ -22,7 +22,8 @@ module Input
       {
         swim_up: keyboard.key_down.up,
         horizontal: keyboard.left_right,
-        harpoon: keyboard.key_down.space
+        harpoon: keyboard.key_down.space,
+        reset_game: keyboard.key_down.space
       }
     end
   end
@@ -37,7 +38,8 @@ module Game
         v: [0, 0],
         x_forward: 1,
         max_v: 1,
-        gravity: -0.01
+        gravity: -0.01,
+        death_tick_count: nil
       )
       args.state.harpoon = args.state.new_entity_strict(
         :harpoon,
@@ -71,16 +73,33 @@ module Game
       { x: position.x - 11, y: position.y, w: 21, h: 12 }
     end
 
+    def player_is_dead?(args)
+      !player(args).death_tick_count.nil?
+    end
+
+    def player_collider(args)
+      player = player(args)
+      position = player_position(args)
+      { x: position.x - 11, y: position.y + 1, w: 19, h: 9 }.tap { |result|
+        result.x += 2 if player.x_forward.negative?
+      }
+    end
+
     def tick(args, input_events)
-      do_swim(args, input_events)
-      handle_shoot_harpoon(args, input_events)
-      handle_pull_in_harpoon(args, input_events)
+      if player_is_dead?(args)
+        reset_game_on_key_press(args, input_events)
+      else
+        do_swim(args, input_events)
+        handle_shoot_harpoon(args, input_events)
+        handle_pull_in_harpoon(args, input_events)
+      end
 
       apply_water_resistance(args)
       apply_gravity(args)
       apply_velocity(args)
       apply_harpoon_rope(args)
-      kill_enemies(args)
+      kill_enemies_with_harpoon(args)
+      kill_player_on_enemy_touch(args)
 
       move_enemies(args)
 
@@ -108,9 +127,10 @@ module Game
     def harpoon_attached_position(args)
       harpoon = harpoon(args)
       player = player(args)
+      player_position = player_position(args)
       [
-        player.x_forward.negative? ? player.position.x - 15 : player.position.x + 10,
-        player.position.y + 2
+        player.x_forward.negative? ? player_position.x - 15 : player_position.x + 10,
+        Game.player_is_dead?(args) ? player.position.y + 9 : player_position.y + 2
       ]
     end
 
@@ -249,7 +269,7 @@ module Game
       end
     end
 
-    def kill_enemies(args)
+    def kill_enemies_with_harpoon(args)
       args.state.enemies.reject! { |enemy|
         enemy.death_tick_count && args.tick_count - enemy.death_tick_count > 20
       }
@@ -262,6 +282,24 @@ module Game
 
         enemy.death_tick_count = args.tick_count
       end
+    end
+
+    def kill_player_on_enemy_touch(args)
+      player_collider = player_collider(args)
+
+      touched_enemy = args.state.enemies.any? { |enemy|
+        next false if enemy.death_tick_count
+
+        enemy.rect.intersect_rect? player_collider
+      }
+
+      player(args).death_tick_count = args.tick_count if touched_enemy
+    end
+
+    def reset_game_on_key_press(args, input_events)
+      return unless input_events[:reset_game]
+
+      args.state.should_reset = true
     end
   end
 end
@@ -315,15 +353,20 @@ module Render
 
     def render_player(args, render_target)
       player = Game.player(args)
+      is_dead = Game.player_is_dead?(args)
       base = Game.player_rect(args).merge(
         path: 'resources/player.png',
         source_x: args.tick_count.idiv(10) % 2 == 0 ? 0 : 21,
         source_w: 21,
         source_h: 12,
-        flip_horizontally: player.x_forward < 0
+        flip_horizontally: player.x_forward < 0,
+        flip_vertically: is_dead
       ).sprite
       render_target.primitives << base.merge(source_y: 12).merge(args.state.palette[0])
       render_target.primitives << base.merge(source_y: 0).merge(args.state.palette[4])
+      return unless Debug.debug_mode
+
+      render_target.primitives << Game.player_collider(args).merge(r: 255).border
     end
 
     def render_harpoon(args, render_target)
@@ -351,12 +394,13 @@ module Render
       return if harpoon.attached
 
       player = Game.player(args)
+      player_position = Game.player_position(args)
 
       render_target.primitives << {
         x: harpoon.x_forward.positive? ? harpoon.position.x - 5 : harpoon.position.x + 5,
         y: harpoon.position.y + 1,
-        x2: player.x_forward.positive? ? player.position.x + 8 : player.position.x - 9,
-        y2: player.position.y + 4
+        x2: player.x_forward.positive? ? player_position.x + 8 : player_position.x - 9,
+        y2: Game.player_is_dead?(args) ? player_position.y + 8 : player_position.y + 4
       }.merge(args.state.palette[4]).line
     end
 
@@ -378,6 +422,10 @@ module Render
           flip_vertically: is_dead,
           a: 255 - (is_dead ? (args.tick_count - enemy.death_tick_count) * 13 : 0)
         }.merge(args.state.palette[3]).sprite
+
+        next unless Debug.debug_mode
+
+        render_target.primitives << [*enemy.rect, 255].border
       end
     end
 
@@ -428,15 +476,35 @@ module Render
     end
 
     def render_ui(args, render_target)
+      base_font = {
+        font: 'resources/8_bit_fortress/8-bit fortress.ttf'
+      }.merge(args.state.palette[4]).label
+
       meters = Game.player_position(args).y.abs.idiv(ONE_METER * 10) * 10
-      render_target.primitives << {
+      render_target.primitives << base_font.merge(
         x: SCREEN_W,
         y: SCREEN_H,
         text: "#{meters}m",
         alignment_enum: 2,
         size_enum: -7,
-        font: 'resources/8_bit_fortress/8-bit fortress.ttf'
-      }.merge(args.state.palette[4]).label
+      )
+
+      return unless Game.player_is_dead?(args)
+
+      render_target.primitives << base_font.merge(
+        x: SCREEN_W.half,
+        y: SCREEN_H.half + 20,
+        text: "You died.",
+        alignment_enum: 1,
+        size_enum: -3,
+      )
+      render_target.primitives << base_font.merge(
+        x: SCREEN_W.half,
+        y: SCREEN_H.half,
+        text: "Press [SPACE] to restart",
+        alignment_enum: 1,
+        size_enum: -3,
+      )
     end
   end
 end
@@ -471,6 +539,7 @@ def tick(args)
   Game.tick(args, Input.process(args))
   Render.tick(args)
   Debug.tick(args)
+  $gtk.reset if args.state.should_reset
 end
 
 $gtk.reset
