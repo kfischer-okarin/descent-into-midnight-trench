@@ -260,7 +260,7 @@ module Game
       min_enemy_distance = 100 - args.state.depth.div(ONE_METER * 20) * 5
       next_enemy_y = -args.state.depth - SCREEN_H - 40
       closest_enemy = args.state.enemies.last
-      return if closest_enemy && (closest_enemy.rect.y - next_enemy_y) < min_enemy_distance
+      return if closest_enemy && (closest_enemy.rect.y - next_enemy_y) < min_enemy_distance || next_enemy_y <= (-TREASURE_DEPTH * ONE_METER + 50)
 
       args.state.enemies << build_enemy(args, next_enemy_y + (rand * 20).ceil)
     end
