@@ -599,7 +599,7 @@ module Render
       render_target.primitives << base_font.merge(
         x: SCREEN_W.half,
         y: SCREEN_H.half + 60,
-        text: "Descent to",
+        text: "Descent into",
         alignment_enum: 1,
         size_enum: 1,
       )
