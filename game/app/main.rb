@@ -563,13 +563,29 @@ module Render
     end
 
     def render_floor(args, render_target)
-      depth = -TREASURE_DEPTH * ONE_METER - 20
+      return if args.state.depth < TREASURE_DEPTH * ONE_METER - SCREEN_H * 2
+
+      depth = -TREASURE_DEPTH * ONE_METER
       render_target.primitives << {
         x: 0,
-        y: depth,
+        y: depth - 20,
         w: SCREEN_W,
         h: 20
       }.merge(args.state.palette[0]).solid
+      render_target.primitives << {
+        x: SCREEN_W.half - 9,
+        y: depth,
+        w: 17,
+        h: 19,
+        path: 'resources/treasure_outline.png'
+      }.merge(args.state.palette[4]).sprite
+      render_target.primitives << {
+        x: SCREEN_W.half - 9,
+        y: depth,
+        w: 17,
+        h: 19,
+        path: 'resources/treasure.png'
+      }.merge(args.state.palette[1]).sprite
     end
   end
 end
