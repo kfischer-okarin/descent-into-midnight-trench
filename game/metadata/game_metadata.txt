@@ -1,0 +1,6 @@
+devid=kfischer-okarin
+devtitle=Kevin Fischer
+gameid=descent-into-midnight-trench
+gametitle=Descent into Midnight Trench
+version=1.0
+icon=metadata/icon.png
