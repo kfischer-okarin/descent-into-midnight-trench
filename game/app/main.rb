@@ -23,7 +23,7 @@ module Input
         swim_up: keyboard.key_down.up,
         horizontal: keyboard.left_right,
         harpoon: keyboard.key_down.space,
-        reset_game: keyboard.key_down.space
+        confirm: keyboard.key_down.space
       }
     end
   end
@@ -55,6 +55,7 @@ module Game
       args.state.depth = 0
       args.state.explored_depth = 0
       args.state.enemies = []
+      args.state.title_screen = true
     end
 
     def build_enemy(args, y)
@@ -86,6 +87,11 @@ module Game
     end
 
     def tick(args, input_events)
+      if args.state.title_screen
+        start_game_on_key_press(args, input_events)
+        return
+      end
+
       if player_is_dead?(args)
         reset_game_on_key_press(args, input_events)
       else
@@ -297,9 +303,15 @@ module Game
     end
 
     def reset_game_on_key_press(args, input_events)
-      return unless input_events[:reset_game]
+      return unless input_events[:confirm]
 
       args.state.should_reset = true
+    end
+
+    def start_game_on_key_press(args, input_events)
+      return unless input_events[:confirm]
+
+      args.state.title_screen = false
     end
   end
 end
@@ -326,15 +338,23 @@ module Render
       render_target = args.outputs[:canvas]
       bg_color = args.state.palette[2]
       render_target.background_color = [bg_color.r, bg_color.g, bg_color.b]
-      render_enemies(args, render_target)
-      render_player(args, render_target)
-      render_harpoon(args, render_target)
-      render_harpoon_rope(args, render_target)
+
+      unless args.state.title_screen
+        render_enemies(args, render_target)
+        render_player(args, render_target)
+        render_harpoon(args, render_target)
+        render_harpoon_rope(args, render_target)
+      end
 
       render_rocks(args, render_target)
 
       transform_for_depth(args, render_target)
-      render_ui(args, render_target)
+
+      if args.state.title_screen
+        render_title_screen(args, render_target)
+      else
+        render_ui(args, render_target)
+      end
     end
 
     private
@@ -475,10 +495,14 @@ module Render
       end
     end
 
-    def render_ui(args, render_target)
+    def base_font(args)
       base_font = {
         font: 'resources/8_bit_fortress/8-bit fortress.ttf'
       }.merge(args.state.palette[4]).label
+    end
+
+    def render_ui(args, render_target)
+      base_font = base_font(args)
 
       meters = Game.player_position(args).y.abs.idiv(ONE_METER * 10) * 10
       render_target.primitives << base_font.merge(
@@ -502,6 +526,32 @@ module Render
         x: SCREEN_W.half,
         y: SCREEN_H.half,
         text: "Press [SPACE] to restart",
+        alignment_enum: 1,
+        size_enum: -3,
+      )
+    end
+
+    def render_title_screen(args, render_target)
+      base_font = base_font(args)
+
+      render_target.primitives << base_font.merge(
+        x: SCREEN_W.half,
+        y: SCREEN_H.half + 60,
+        text: "Descent to",
+        alignment_enum: 1,
+        size_enum: 1,
+      )
+      render_target.primitives << base_font.merge(
+        x: SCREEN_W.half,
+        y: SCREEN_H.half + 30,
+        text: "Midnight Trench",
+        alignment_enum: 1,
+        size_enum: 1,
+      )
+      render_target.primitives << base_font.merge(
+        x: SCREEN_W.half,
+        y: SCREEN_H.half - 30,
+        text: "Press [SPACE] to play",
         alignment_enum: 1,
         size_enum: -3,
       )
