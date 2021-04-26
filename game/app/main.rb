@@ -93,7 +93,7 @@ module Game
         return
       end
 
-      if player_is_dead?(args)
+      if player_is_dead?(args) || args.state.win
         reset_game_on_key_press(args, input_events)
       else
         do_swim(args, input_events)
@@ -112,6 +112,7 @@ module Game
 
       keep_player_inside_screen(args)
       vertical_scroll(args)
+      win_game_when_reach_floor(args)
     end
 
     def player(args)
@@ -316,6 +317,13 @@ module Game
 
       args.state.title_screen = false
     end
+
+    def win_game_when_reach_floor(args)
+      player_position = player_position(args)
+      return unless player_position.y <= -TREASURE_DEPTH * ONE_METER
+
+      args.state.win = true
+    end
   end
 end
 
@@ -518,12 +526,61 @@ module Render
         size_enum: -7,
       )
 
-      return unless Game.player_is_dead?(args)
+      if Game.player_is_dead?(args)
+        render_game_over_message(args, render_target)
+      elsif args.state.win
+        render_win_message(args, render_target)
+      end
+    end
 
+    def render_game_over_message(args, render_target)
+      base_font = base_font(args)
       render_target.primitives << base_font.merge(
         x: SCREEN_W.half,
         y: SCREEN_H.half + 20,
         text: "You died.",
+        alignment_enum: 1,
+        size_enum: -3,
+      )
+      render_target.primitives << base_font.merge(
+        x: SCREEN_W.half,
+        y: SCREEN_H.half,
+        text: "Press [SPACE] to restart",
+        alignment_enum: 1,
+        size_enum: -3,
+      )
+    end
+    def render_game_over_message(args, render_target)
+      base_font = base_font(args)
+      render_target.primitives << base_font.merge(
+        x: SCREEN_W.half,
+        y: SCREEN_H.half + 20,
+        text: "You died.",
+        alignment_enum: 1,
+        size_enum: -3,
+      )
+      render_target.primitives << base_font.merge(
+        x: SCREEN_W.half,
+        y: SCREEN_H.half,
+        text: "Press [SPACE] to restart",
+        alignment_enum: 1,
+        size_enum: -3,
+      )
+    end
+
+    def render_win_message(args, render_target)
+      base_font = base_font(args)
+      render_target.primitives << base_font.merge(
+        x: SCREEN_W.half,
+        y: SCREEN_H.half + 40,
+        text: "You reached the treasure",
+        alignment_enum: 1,
+        size_enum: -3,
+      )
+      render_target.primitives << base_font.merge(
+        x: SCREEN_W.half,
+        y: SCREEN_H.half + 20,
+        text: "Congratulations!",
         alignment_enum: 1,
         size_enum: -3,
       )
@@ -623,5 +680,5 @@ def tick(args)
   $gtk.reset if args.state.should_reset
 end
 
-$gtk.reset
-$console.close
+# $gtk.reset
+# $console.close
