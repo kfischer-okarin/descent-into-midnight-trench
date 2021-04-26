@@ -1,6 +1,7 @@
 SCREEN_W = 320
 SCREEN_H = 180
 ONE_METER = 15
+TREASURE_DEPTH = 50
 
 def vector_length(vector)
   Math.sqrt(vector.x**2 + vector.y**2)
@@ -236,10 +237,12 @@ module Game
       player_position.x += -player_rect.left if player_rect.left.negative?
       player_position.x -= (player_rect.right - SCREEN_W) if player_rect.right > SCREEN_W
       player_position.y -= player_rect.top if player_rect.top.positive?
+      player_position.y += (-TREASURE_DEPTH * ONE_METER - player_rect.bottom) if player_rect.bottom < -TREASURE_DEPTH * ONE_METER
     end
 
     def vertical_scroll(args)
       args.state.depth = [0, (player_position(args).y.abs - SCREEN_H.half).to_i].max
+      args.state.depth = [TREASURE_DEPTH * ONE_METER - SCREEN_H + 20, args.state.depth].min
       if args.state.depth > args.state.explored_depth + 20
         args.state.explored_depth = args.state.depth
 
@@ -347,6 +350,8 @@ module Render
       end
 
       render_rocks(args, render_target)
+
+      render_floor(args, render_target)
 
       transform_for_depth(args, render_target)
 
@@ -555,6 +560,16 @@ module Render
         alignment_enum: 1,
         size_enum: -3,
       )
+    end
+
+    def render_floor(args, render_target)
+      depth = -TREASURE_DEPTH * ONE_METER - 20
+      render_target.primitives << {
+        x: 0,
+        y: depth,
+        w: SCREEN_W,
+        h: 20
+      }.merge(args.state.palette[0]).solid
     end
   end
 end
