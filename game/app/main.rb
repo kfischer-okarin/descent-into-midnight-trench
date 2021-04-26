@@ -1,7 +1,7 @@
 SCREEN_W = 320
 SCREEN_H = 180
 ONE_METER = 15
-TREASURE_DEPTH = 50
+TREASURE_DEPTH = 500
 
 def vector_length(vector)
   Math.sqrt(vector.x**2 + vector.y**2)
