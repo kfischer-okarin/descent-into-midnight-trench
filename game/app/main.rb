@@ -434,7 +434,8 @@ module Render
         y: SCREEN_H,
         text: "#{meters}m",
         alignment_enum: 2,
-        size_enum: -2
+        size_enum: -7,
+        font: 'resources/8_bit_fortress/8-bit fortress.ttf'
       }.merge(args.state.palette[4]).label
     end
   end
